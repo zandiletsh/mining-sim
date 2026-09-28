@@ -65,6 +65,12 @@ class Truck:
     maintenance_minutes_remaining: int = 0
     failed_ticks_remaining: int = 0  # detection/dispatch delay before repair starts
 
+    # Set when OpsBrain temporarily reassigns this truck to cover for a
+    # disruption elsewhere. The truck reverts to its normal route once
+    # the sim tick passes reassigned_until_tick.
+    original_route_id: Optional[str] = None
+    reassigned_until_tick: Optional[int] = None
+
     def utilisation(self, elapsed_minutes: int) -> float:
         if elapsed_minutes <= 0:
             return 0.0

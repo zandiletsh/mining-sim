@@ -43,10 +43,37 @@ class Simulation:
         self.records: List[OperationalRecord] = []
         self.cumulative_production_t = 0.0
 
+        # OpsBrain (Phase 2) registers callbacks here. Called the tick a
+        # disruption activates, as (sim, disruption). Left empty, the sim
+        # runs exactly as it did in Phase 1.
+        self.event_hooks: List = []
+
+    # ------------------------------------------------------------------
+    def reassign_truck(self, truck_id: str, new_route_id: str, until_tick: int):
+        """
+        Temporarily move a truck onto a different route (OpsBrain's
+        "reassign equipment" decision). The truck reverts to its normal
+        route once `until_tick` passes.
+        """
+        truck = self.trucks[truck_id]
+        if truck.original_route_id is None:
+            truck.original_route_id = truck.route_id
+        truck.route_id = new_route_id
+        truck.reassigned_until_tick = until_tick
+
+    def _revert_expired_reassignments(self):
+        for truck in self.trucks.values():
+            if (truck.reassigned_until_tick is not None
+                    and self.tick >= truck.reassigned_until_tick):
+                truck.route_id = truck.original_route_id
+                truck.original_route_id = None
+                truck.reassigned_until_tick = None
+
     # ------------------------------------------------------------------
     def run(self, total_ticks: int = topology.TOTAL_TICKS):
         for _ in range(total_ticks):
             self.tick += 1
+            self._revert_expired_reassignments()
             self._apply_disruptions()
             self._update_trucks()
             self._update_crushers()
@@ -64,6 +91,8 @@ class Simulation:
                 self._activate_disruption(d)
                 d.applied = True
                 d.remaining_min = d.duration_min
+                for hook in self.event_hooks:
+                    hook(self, d)
 
             elif d.applied and d.remaining_min is not None:
                 d.remaining_min -= topology.TICK_MINUTES
