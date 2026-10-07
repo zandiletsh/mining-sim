@@ -27,7 +27,12 @@ class Evaluation:
 
 
 def evaluate_option(sim, option: Option) -> Evaluation:
-    clone = copy.deepcopy(sim)
+    # The history log isn't needed for a what-if and is slow to copy.
+    history, sim.records = sim.records, []
+    try:
+        clone = copy.deepcopy(sim)
+    finally:
+        sim.records = history
     clone.event_hooks = []          # don't re-trigger OpsBrain inside the what-if
     option.apply(clone)
 
@@ -47,3 +52,19 @@ def evaluate_option(sim, option: Option) -> Evaluation:
 
 def evaluate_all(sim, options: List[Option]) -> List[Evaluation]:
     return [evaluate_option(sim, opt) for opt in options]
+
+
+MIN_WORTH_ACTING_T = 1.0  # a gain smaller than this isn't worth disturbing the fleet
+
+
+def pick_best(evaluations: List[Evaluation]) -> Evaluation:
+    """
+    Highest final production wins. Ties go to the simpler option (fewer
+    trucks moved). If nothing beats doing nothing by at least
+    MIN_WORTH_ACTING_T, the answer is to accept the loss.
+    """
+    baseline = next(e for e in evaluations if e.option.option_id == "accept_loss")
+    best = min(evaluations, key=lambda e: (-e.final_production_t, e.option.complexity))
+    if best.final_production_t - baseline.final_production_t < MIN_WORTH_ACTING_T:
+        return baseline
+    return best

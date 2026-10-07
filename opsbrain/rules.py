@@ -30,6 +30,7 @@ class Option:
     label: str
     description: str
     apply: Callable  # apply(sim) -> None, called once on a cloned sim
+    complexity: int = 0  # how many trucks this option moves (used to break ties)
 
 
 def _routes_feeding(crusher_id: str) -> List[str]:

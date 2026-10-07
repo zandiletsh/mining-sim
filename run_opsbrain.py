@@ -14,9 +14,12 @@ human-in-the-loop, per the project's design principle: OpsBrain informs,
 a person decides).
 
 Usage:
-    python run_opsbrain.py [scenario] [mode]
-    (same arguments as main.py — default: combined / balanced, since
-    that's the scenario with all three disruption types to react to)
+    python run_opsbrain.py [scenario] [mode] [engine]
+    scenario: default | degradation | closure | combined | none
+    mode:     oversized | balanced
+    engine:   rules (3 hand-picked options) | optimiser (searches them all)
+    Defaults: combined / balanced / optimiser, since that's the scenario
+    with all three disruption types to react to.
 """
 
 import sys
@@ -26,8 +29,12 @@ import disruptions
 import topology
 from opsbrain.context import build_context, print_context
 from opsbrain.rules import generate_options
+from opsbrain.optimiser import generate_candidates
 from opsbrain.consequences import evaluate_all
 from opsbrain.explain import print_decision_table
+
+ENGINES = {"rules": generate_options, "optimiser": generate_candidates}
+ENGINE = "optimiser"
 
 
 SCENARIOS = {
@@ -43,20 +50,24 @@ def on_disruption(sim, disruption):
     ctx = build_context(sim, disruption)
     print_context(ctx)
 
-    options = generate_options(sim, disruption)
+    options = ENGINES[ENGINE](sim, disruption)
     evaluations = evaluate_all(sim, options)
-    print_decision_table(ctx, evaluations)
+    print_decision_table(ctx, evaluations, top_n=3 if ENGINE == "optimiser" else None)
 
 
 def main():
+    global ENGINE
     scenario_name = sys.argv[1] if len(sys.argv) > 1 else "combined"
     mode = sys.argv[2] if len(sys.argv) > 2 else "balanced"
+    ENGINE = sys.argv[3] if len(sys.argv) > 3 else "optimiser"
+    if ENGINE not in ENGINES:
+        sys.exit(f"Unknown engine '{ENGINE}'. Options: {list(ENGINES)}")
 
     scenario = SCENARIOS[scenario_name]()
     sim = Simulation(scenario, mode=mode)
     sim.event_hooks.append(on_disruption)
 
-    print(f"OpsBrain watching shift — scenario: {scenario_name}, mode: {mode}")
+    print(f"OpsBrain watching shift — scenario: {scenario_name}, mode: {mode}, engine: {ENGINE}")
     sim.run()
 
     print(f"\n{'='*60}")
