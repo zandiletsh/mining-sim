@@ -536,7 +536,7 @@
     html += '<div><div class="l">Production so far</div><div class="v">' + ev.productionSoFar.toLocaleString() + ' t</div></div>';
     html += '<div><div class="l">% of shift target</div><div class="v">' + ev.pctOfTarget + '%</div></div>';
     html += '</div>';
-    html += '<div style="font-size:0.85rem; color:var(--fg-dim); margin-bottom:4px;">OpsBrain evaluated these options and simulated each one forward to shift end:</div>';
+    html += '<div style="font-size:0.85rem; color:var(--fg-dim); margin-bottom:4px;">OpsBrain searched <strong style="color:var(--fg)">' + ev.searched + ' possible fleet moves</strong> and simulated each one forward to shift end. Doing nothing, plus the best three:</div>';
 
     ev.options.forEach(function (opt) {
       html += '<div class="option-row' + (opt.isRecommended ? ' recommended' : '') + '">';
@@ -557,6 +557,7 @@
       html += '</div></div>';
     });
 
+    html += '<div style="font-size:0.78rem; color:var(--fg-dim); margin-top:12px;">A person makes the call. This replay carries on without acting on the recommendation, so the final production shows what happens if nobody does anything.</div>';
     html += '<button class="close-btn" id="event-continue">Continue shift</button>';
     el.card.innerHTML = html;
     el.overlay.hidden = false;

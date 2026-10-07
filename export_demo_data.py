@@ -12,21 +12,27 @@ import topology
 import disruptions
 from simulation import Simulation
 from opsbrain.context import build_context
-from opsbrain.rules import generate_options
-from opsbrain.consequences import evaluate_all
+from opsbrain.optimiser import generate_candidates
+from opsbrain.consequences import evaluate_all, pick_best
 
 SCENARIO = disruptions.combined_scenario()
 MODE = "balanced"
+TOP_N = 3  # show "accept the loss" plus the best TOP_N of everything searched
 
 events = []
 
 
 def on_disruption(sim, disruption):
     ctx = build_context(sim, disruption)
-    options = generate_options(sim, disruption)
-    evaluations = evaluate_all(sim, options)
-    baseline = next(e for e in evaluations if e.option.option_id == "accept_loss")
-    best = max(evaluations, key=lambda e: e.final_production_t)
+    options = generate_candidates(sim, disruption)
+    all_evaluations = evaluate_all(sim, options)
+    baseline = next(e for e in all_evaluations if e.option.option_id == "accept_loss")
+    best = pick_best(all_evaluations)
+    others = sorted(
+        (e for e in all_evaluations if e is not baseline),
+        key=lambda e: (-e.final_production_t, e.option.complexity),
+    )
+    evaluations = [baseline] + others[:TOP_N]
 
     events.append({
         "tick": ctx.tick,
@@ -36,6 +42,7 @@ def on_disruption(sim, disruption):
         "durationMin": ctx.disruption_duration_min,
         "productionSoFar": ctx.production_so_far_t,
         "pctOfTarget": ctx.pct_of_target_so_far,
+        "searched": len(all_evaluations),
         "options": [
             {
                 "id": e.option.option_id,
@@ -101,10 +108,15 @@ output = {
     "ticks": ticks,
 }
 
-with open("/tmp/demo_data.json", "w") as f:
+import os
+
+# Written next to the page that reads it, so this works on any computer.
+out_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "demo_artifact")
+os.makedirs(out_dir, exist_ok=True)
+out_path = os.path.join(out_dir, "demo_data.json")
+with open(out_path, "w") as f:
     json.dump(output, f)
 
 print(f"ticks: {len(ticks)}, events: {len(events)}")
 print(f"final production: {output['finalProduction']}")
-import os
-print(f"file size: {os.path.getsize('/tmp/demo_data.json')/1024:.1f} KB")
+print(f"wrote {out_path} ({os.path.getsize(out_path)/1024:.1f} KB)")
