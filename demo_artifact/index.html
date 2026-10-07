@@ -82,6 +82,32 @@
   header.top h1 { font-size: 1.3rem; letter-spacing: 0.02em; }
   header.top .tag { color: var(--fg-dim); font-size: 0.85rem; }
 
+  /* ---- scenario picker ---- */
+  .scenario-bar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .scenario-bar label { font-size: 0.72rem; color: var(--fg-dim); text-transform: uppercase; letter-spacing: 0.06em; }
+  .scenario-bar select {
+    font-family: var(--font-display);
+    font-size: 0.9rem;
+    background: var(--surface);
+    color: var(--fg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px 10px;
+    max-width: 100%;
+  }
+  .scenario-bar select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .scenario-bar .blurb { color: var(--fg-dim); font-size: 0.85rem; flex: 1 1 260px; min-width: 0; }
+
+  .run-note { font-size: 0.85rem; margin: 0; padding: 8px 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+  .run-note[hidden] { display: none; }
+  .run-note.good { border-color: var(--good); }
+  .run-note button { margin-left: auto; font-family: var(--font-display); font-size: 0.8rem; background: transparent; color: var(--fg); border: 1px solid var(--border); border-radius: 6px; padding: 5px 10px; cursor: pointer; }
+  #event-card .btn-row { display: flex; gap: 10px; margin-top: 16px; flex-wrap: wrap; }
+  #event-card .btn-row .close-btn { margin-top: 0; flex: 1 1 180px; }
+  #event-card .btn-row .apply-btn { background: var(--good); color: #fff; }
+  #event-card .btn-row .skip-btn { background: transparent; color: var(--fg); border: 1px solid var(--border); }
+  #event-card .applied-note { margin-top: 12px; font-size: 0.85rem; color: var(--good); }
+
   /* ---- KPI strip ---- */
   .kpis {
     display: grid;
@@ -227,7 +253,7 @@
     text-transform: uppercase;
     letter-spacing: 0.05em;
   }
-  #event-card .badge::before { content: '●'; font-size: 0.6rem; }
+  #event-card .badge::before { content: '\25CF'; font-size: 0.6rem; }
   #event-card h3 { font-size: 1.15rem; margin-top: 10px; }
   #event-card .ctx {
     display: grid;
@@ -295,8 +321,15 @@
     <span class="dot"></span>
     <h1>OpsBrain Control Room</h1>
   </div>
-  <div class="tag">Live shift replay &middot; balanced fleet &middot; combined disruption scenario</div>
+  <div class="tag">Live shift replay &middot; balanced fleet</div>
 </header>
+
+<section class="scenario-bar">
+  <label for="scenario-select">Scenario</label>
+  <select id="scenario-select"></select>
+  <span class="blurb" id="scenario-blurb"></span>
+</section>
+<p class="run-note" id="run-note" hidden></p>
 
 <section class="kpis">
   <div class="kpi">
@@ -411,7 +444,10 @@
 (function () {
   "use strict";
 
-  var data = null;
+  var data = null;      // scenario info + the current run's events/ticks
+  var scenarioFile = null; // whole file with every possible path
+  var history = '';     // decisions so far: one 1 (applied) or 0 (carried on) per event
+  var noActionFinal = 0;
   var tickIdx = 0;
   var playing = false;
   var playTimer = null;
@@ -446,6 +482,17 @@
     CRUSHER_DUMPING: 1.0,
     HAUL_EMPTY: 0.38,
   };
+
+  function prettyType(t) { return t.replace(/_/g, ' '); }
+  function describeEvent(x) {
+    var d = prettyType(x.type) + ' on ' + x.target;
+    if (x.type === 'MAINTENANCE_DELAY') d += ' (+' + x.durationMin + ' min)';
+    return d;
+  }
+  function eventSummary(ev) {
+    var evs = ev.events || [{ type: ev.disruptionType, target: ev.disruptionTarget, durationMin: ev.durationMin }];
+    return evs.map(describeEvent).join(' + ');
+  }
 
   function fmtClock(minutes) {
     var h = Math.floor(minutes / 60);
@@ -495,11 +542,11 @@
     el.scrubLabel.textContent = fmtClock(snap.tick) + ' / ' + fmtClock(data.shiftMinutes);
 
     // auto-pop event panel the first time playback crosses its tick
-    data.events.forEach(function (ev) {
+    data.events.forEach(function (ev, i) {
       if (snap.tick >= ev.tick && !shownEvents[ev.tick]) {
         shownEvents[ev.tick] = true;
         pause();
-        showEventCard(ev);
+        showEventCard(ev, i);
       }
     });
     refreshEventLog();
@@ -527,12 +574,25 @@
     if (playTimer) { clearInterval(playTimer); playTimer = null; }
   }
 
-  function showEventCard(ev) {
-    var html = '<span class="badge">Event detected</span>';
-    html += '<h3>' + ev.disruptionType.replace(/_/g, ' ') + ' &mdash; ' + ev.disruptionTarget + '</h3>';
+  function showEventCard(ev, idx) {
+    var decided = idx < history.length;
+    var wasApplied = decided && history.charAt(idx) === '1';
+    var evs = ev.events || [{ type: ev.disruptionType, target: ev.disruptionTarget, durationMin: ev.durationMin }];
+    var isDelay = evs.length === 1 && evs[0].type === 'MAINTENANCE_DELAY';
+    var html = '<span class="badge">' + (evs.length > 1 ? 'Events detected' : 'Event detected') + '</span>';
+    if (evs.length > 1) {
+      html += '<h3>' + evs.length + ' problems at the same time</h3>';
+      html += '<ul style="margin:8px 0 0; padding-left:18px; font-size:0.88rem;">';
+      evs.forEach(function (x) {
+        html += '<li>' + describeEvent(x) + '</li>';
+      });
+      html += '</ul>';
+    } else {
+      html += '<h3>' + prettyType(evs[0].type) + ' &mdash; ' + evs[0].target + '</h3>';
+    }
     html += '<div class="ctx">';
     html += '<div><div class="l">Sim time</div><div class="v">' + fmtClock(ev.minutesElapsed) + '</div></div>';
-    html += '<div><div class="l">Expected duration</div><div class="v">' + (ev.durationMin || '—') + ' min</div></div>';
+    html += '<div><div class="l">' + (isDelay ? 'Extra repair time' : (evs.length > 1 ? 'Longest expected' : 'Expected duration')) + '</div><div class="v">' + (ev.durationMin || '—') + ' min</div></div>';
     html += '<div><div class="l">Production so far</div><div class="v">' + ev.productionSoFar.toLocaleString() + ' t</div></div>';
     html += '<div><div class="l">% of shift target</div><div class="v">' + ev.pctOfTarget + '%</div></div>';
     html += '</div>';
@@ -557,24 +617,73 @@
       html += '</div></div>';
     });
 
-    html += '<div style="font-size:0.78rem; color:var(--fg-dim); margin-top:12px;">A person makes the call. This replay carries on without acting on the recommendation, so the final production shows what happens if nobody does anything.</div>';
-    html += '<button class="close-btn" id="event-continue">Continue shift</button>';
+    var rec = ev.options.filter(function (o) { return o.isRecommended; })[0];
+    var canApply = rec && !rec.isBaseline;
+    if (decided) {
+      html += '<div class="applied-note">' + (wasApplied ? 'You applied the recommendation here.' : 'You carried on without acting here.') + '</div>';
+      html += '<button class="close-btn" id="event-continue">Close</button>';
+    } else {
+      html += '<div style="font-size:0.78rem; color:var(--fg-dim); margin-top:12px;">A person makes the call. Apply the recommendation, or carry on and see what happens if nobody acts.</div>';
+      html += '<div class="btn-row">';
+      if (canApply) html += '<button class="close-btn apply-btn" id="event-apply">Apply recommendation</button>';
+      html += '<button class="close-btn skip-btn" id="event-continue">' + (canApply ? 'Carry on without acting' : 'Continue shift') + '</button>';
+      html += '</div>';
+    }
     el.card.innerHTML = html;
     el.overlay.hidden = false;
     document.getElementById('event-continue').addEventListener('click', function () {
+      if (!decided) { decide(idx, '0'); }
       el.overlay.hidden = true;
     });
+    var ab = document.getElementById('event-apply');
+    if (ab) ab.addEventListener('click', function () {
+      decide(idx, '1');
+      el.overlay.hidden = true;
+      play();
+    });
+  }
+
+  function padKey(h) {
+    while (h.length < scenarioFile.eventCount) h += '0';
+    return h;
+  }
+  function setRun(h) {
+    var run = scenarioFile.runs[padKey(h)];
+    data.events = run.events;
+    data.ticks = run.ticks;
+    data.finalProduction = run.finalProduction;
+  }
+  function decide(idx, choice) {
+    if (idx !== history.length) return; // already decided
+    history += choice;
+    setRun(history);
+    updateNote();
+    refreshEventLog();
+  }
+  function updateNote() {
+    var note = document.getElementById('run-note');
+    var applied = history.split('1').length - 1;
+    if (!history.length) { note.hidden = true; return; }
+    note.hidden = false;
+    var fin = data.finalProduction;
+    var diff = Math.round((fin - noActionFinal) * 10) / 10;
+    note.className = 'run-note' + (applied ? ' good' : '');
+    var h = applied
+      ? 'You applied ' + applied + ' recommendation' + (applied > 1 ? 's' : '') + '. Final production this shift: <strong>' + fin.toLocaleString() + ' t</strong> (' + (diff >= 0 ? '+' : '') + diff.toLocaleString() + ' t vs. nobody acting: ' + noActionFinal.toLocaleString() + ' t).'
+      : 'Nobody has acted so far. Final production this shift: <strong>' + fin.toLocaleString() + ' t</strong>.';
+    note.innerHTML = '<span>' + h + '</span><button id="restart-btn">Start over</button>';
+    document.getElementById('restart-btn').addEventListener('click', function () { loadScenario(select.value); });
   }
 
   function refreshEventLog() {
     el.eventLogList.innerHTML = '';
-    data.events.forEach(function (ev) {
+    data.events.forEach(function (ev, i) {
       var happened = data.ticks[tickIdx].tick >= ev.tick;
       var div = document.createElement('div');
       div.className = 'event-log-item' + (happened ? '' : ' pending');
       div.innerHTML = '<div class="t">' + fmtClock(ev.minutesElapsed) + '</div>' +
-                       '<div class="d">' + ev.disruptionType.replace(/_/g, ' ') + ' on ' + ev.disruptionTarget + '</div>';
-      div.addEventListener('click', function () { showEventCard(ev); });
+                       '<div class="d">' + eventSummary(ev) + '</div>';
+      div.addEventListener('click', function () { showEventCard(ev, i); });
       el.eventLogList.appendChild(div);
     });
   }
@@ -587,12 +696,49 @@
     renderTick(parseInt(el.scrubber.value, 10));
   });
 
-  fetch('demo_data.json').then(function (r) { return r.json(); }).then(function (json) {
-    data = json;
-    el.scrubber.max = data.ticks.length - 1;
-    renderTick(0);
-  }).catch(function (err) {
-    el.eventLogList.innerHTML = '<div style="color:var(--critical)">Could not load shift data.</div>';
+  var SCENARIOS = [
+    { key: 'combined', file: 'demo_data.json', title: 'Three separate problems' },
+    { key: 'delay', file: 'demo_data_delay.json', title: 'Repair runs late' },
+    { key: 'double', file: 'demo_data_double.json', title: 'Two problems at once' },
+  ];
+  var select = document.getElementById('scenario-select');
+  var blurb = document.getElementById('scenario-blurb');
+  var loadToken = 0;
+
+  SCENARIOS.forEach(function (sc) {
+    var opt = document.createElement('option');
+    opt.value = sc.key;
+    opt.textContent = sc.title;
+    select.appendChild(opt);
   });
+
+  function loadScenario(key) {
+    var sc = SCENARIOS.filter(function (x) { return x.key === key; })[0];
+    var token = ++loadToken;
+    pause();
+    el.overlay.hidden = true;
+    blurb.textContent = 'Loading...';
+    fetch(sc.file).then(function (r) { return r.json(); }).then(function (json) {
+      if (token !== loadToken) return; // a newer pick won
+      scenarioFile = json;
+      data = json;
+      history = '';
+      noActionFinal = json.runs[padKey('')].finalProduction;
+      setRun('');
+      updateNote();
+      shownEvents = {};
+      tickIdx = 0;
+      blurb.textContent = data.scenarioBlurb || '';
+      el.scrubber.max = data.ticks.length - 1;
+      renderTick(0);
+    }).catch(function () {
+      if (token !== loadToken) return;
+      blurb.textContent = '';
+      el.eventLogList.innerHTML = '<div style="color:var(--critical)">Could not load shift data.</div>';
+    });
+  }
+
+  select.addEventListener('change', function () { loadScenario(select.value); });
+  loadScenario(SCENARIOS[0].key);
 })();
 </script>
