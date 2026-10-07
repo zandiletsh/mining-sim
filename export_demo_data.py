@@ -22,9 +22,9 @@ TOP_N = 3  # show "accept the loss" plus the best TOP_N of everything searched
 events = []
 
 
-def on_disruption(sim, disruption):
-    ctx = build_context(sim, disruption)
-    options = generate_candidates(sim, disruption)
+def on_disruption(sim, fired):
+    ctx = build_context(sim, fired)
+    options = generate_candidates(sim, fired)
     all_evaluations = evaluate_all(sim, options)
     baseline = next(e for e in all_evaluations if e.option.option_id == "accept_loss")
     best = pick_best(all_evaluations)

@@ -7,7 +7,7 @@ logically (Part C, items 12-13).
 Usage:
     python main.py [scenario] [mode]
 
-    scenario: default | degradation | closure | combined | none
+    scenario: default | degradation | closure | combined | delay | double | none
     mode:     oversized (old, 7 trucks, empty buffers - default)
               balanced  (new, 5 trucks, half-full buffers)
 
@@ -28,6 +28,8 @@ SCENARIOS = {
     "degradation": disruptions.degradation_scenario,
     "closure": disruptions.road_closure_scenario,
     "combined": disruptions.combined_scenario,
+    "delay": disruptions.delay_scenario,
+    "double": disruptions.double_scenario,
     "none": lambda: [],
 }
 

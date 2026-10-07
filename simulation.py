@@ -75,24 +75,34 @@ class Simulation:
             self.tick += 1
             self._revert_expired_reassignments()
             self._apply_disruptions()
-            self._update_trucks()
-            self._update_crushers()
-            self._update_processing()
-            self._log_tick()
+            self.finish_current_tick()
         return self.records
+
+    def finish_current_tick(self):
+        """
+        Move the machines for the tick that is in progress. OpsBrain's hooks
+        fire part-way through a tick (events are applied, machines have not
+        moved yet), so a what-if copy calls this first to carry on from the
+        same point the real shift does.
+        """
+        self._update_trucks()
+        self._update_crushers()
+        self._update_processing()
+        self._log_tick()
 
     # ------------------------------------------------------------------
     def _apply_disruptions(self):
+        fired = []  # everything that started this tick, so OpsBrain can decide on it together
         for d in self.scenario:
             if d.resolved:
                 continue
 
             if not d.applied and self.tick == d.trigger_tick:
-                self._activate_disruption(d)
+                had_effect = self._activate_disruption(d)
                 d.applied = True
                 d.remaining_min = d.duration_min
-                for hook in self.event_hooks:
-                    hook(self, d)
+                if had_effect:
+                    fired.append(d)
 
             elif d.applied and d.remaining_min is not None:
                 d.remaining_min -= topology.TICK_MINUTES
@@ -100,12 +110,25 @@ class Simulation:
                     self._resolve_disruption(d)
                     d.resolved = True
 
-    def _activate_disruption(self, d: Disruption):
+        if fired:
+            for hook in self.event_hooks:
+                hook(self, fired)
+
+    def _activate_disruption(self, d: Disruption) -> bool:
+        """Apply the disruption. Returns False if it changed nothing."""
         if d.disruption_type == "TRUCK_BREAKDOWN":
             truck = self.trucks[d.target_id]
             truck.state = AssetState.FAILED
             truck.failed_ticks_remaining = FAILED_DISPATCH_DELAY_MIN
             truck.maintenance_minutes_remaining = d.duration_min or 0
+
+        elif d.disruption_type == "MAINTENANCE_DELAY":
+            # Repair takes longer than planned (parts late, no mechanic free).
+            # Only means something for a truck that is already down.
+            truck = self.trucks[d.target_id]
+            if truck.state not in (AssetState.FAILED, AssetState.MAINTENANCE):
+                return False
+            truck.maintenance_minutes_remaining += d.duration_min or 0
 
         elif d.disruption_type == "CRUSHER_DEGRADATION":
             crusher = self.crushers[d.target_id]
@@ -114,6 +137,8 @@ class Simulation:
         elif d.disruption_type == "ROAD_CLOSURE":
             route = self.routes[d.target_id]
             route.status = RouteStatus.CLOSED
+
+        return True
 
     def _resolve_disruption(self, d: Disruption):
         if d.disruption_type == "CRUSHER_DEGRADATION":

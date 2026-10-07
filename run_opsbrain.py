@@ -15,7 +15,7 @@ a person decides).
 
 Usage:
     python run_opsbrain.py [scenario] [mode] [engine]
-    scenario: default | degradation | closure | combined | none
+    scenario: default | degradation | closure | combined | delay | double | none
     mode:     oversized | balanced
     engine:   rules (3 hand-picked options) | optimiser (searches them all)
     Defaults: combined / balanced / optimiser, since that's the scenario
@@ -42,15 +42,18 @@ SCENARIOS = {
     "degradation": disruptions.degradation_scenario,
     "closure": disruptions.road_closure_scenario,
     "combined": disruptions.combined_scenario,
+    "delay": disruptions.delay_scenario,
+    "double": disruptions.double_scenario,
     "none": lambda: [],
 }
 
 
-def on_disruption(sim, disruption):
-    ctx = build_context(sim, disruption)
+def on_disruption(sim, fired):
+    """Called once per tick with every event that started on that tick."""
+    ctx = build_context(sim, fired)
     print_context(ctx)
 
-    options = ENGINES[ENGINE](sim, disruption)
+    options = ENGINES[ENGINE](sim, fired)
     evaluations = evaluate_all(sim, options)
     print_decision_table(ctx, evaluations, top_n=3 if ENGINE == "optimiser" else None)
 

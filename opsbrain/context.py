@@ -21,9 +21,10 @@ class Context:
     tick: int
     shift_minutes_elapsed: int
     shift_minutes_remaining: int
-    disruption_type: str
+    disruption_type: str            # several events at once are joined with " + "
     disruption_target: str
-    disruption_duration_min: Optional[int]
+    disruption_duration_min: Optional[int]   # the longest of them
+    events: list                    # one (type, target, duration_min) per event
     production_so_far_t: float
     production_target_t: float
     pct_of_target_so_far: float
@@ -32,17 +33,22 @@ class Context:
     crusher_health: dict            # asset_id -> health_pct
 
 
-def build_context(sim, disruption: Disruption) -> Context:
+def build_context(sim, disruptions) -> Context:
+    """`disruptions` is the list of events that started this tick (one is fine too)."""
+    if isinstance(disruptions, Disruption):
+        disruptions = [disruptions]
     elapsed = sim.tick * topology.TICK_MINUTES
     remaining = topology.SHIFT_MINUTES - elapsed
+    durations = [d.duration_min for d in disruptions if d.duration_min]
 
     return Context(
         tick=sim.tick,
         shift_minutes_elapsed=elapsed,
         shift_minutes_remaining=remaining,
-        disruption_type=disruption.disruption_type,
-        disruption_target=disruption.target_id,
-        disruption_duration_min=disruption.duration_min,
+        disruption_type=" + ".join(d.disruption_type for d in disruptions),
+        disruption_target=" + ".join(d.target_id for d in disruptions),
+        disruption_duration_min=max(durations) if durations else None,
+        events=[(d.disruption_type, d.target_id, d.duration_min) for d in disruptions],
         production_so_far_t=round(sim.cumulative_production_t, 1),
         production_target_t=topology.PRODUCTION_TARGET_T,
         pct_of_target_so_far=round(
@@ -58,8 +64,15 @@ def print_context(ctx: Context):
     print(f"\n{'-'*60}")
     print(f"EVENT DETECTED  (tick {ctx.tick}, {ctx.shift_minutes_elapsed} min into shift)")
     print(f"{'-'*60}")
-    print(f"{ctx.disruption_type} on {ctx.disruption_target}"
-          + (f" (expected {ctx.disruption_duration_min} min)" if ctx.disruption_duration_min else ""))
+    for kind, target, minutes in ctx.events:
+        what = f"{kind} on {target}"
+        if kind == "MAINTENANCE_DELAY":
+            what += f" (repair now takes {minutes} min longer)" if minutes else ""
+        elif minutes:
+            what += f" (expected {minutes} min)"
+        print(what)
+    if len(ctx.events) > 1:
+        print(f"-> {len(ctx.events)} events at once, so OpsBrain decides on them together")
     print(f"Production so far: {ctx.production_so_far_t:,.1f} t "
           f"({ctx.pct_of_target_so_far}% of {ctx.production_target_t:,.0f} t target)")
     print(f"Shift time left:   {ctx.shift_minutes_remaining} min")

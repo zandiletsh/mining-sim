@@ -33,6 +33,17 @@ class Option:
     complexity: int = 0  # how many trucks this option moves (used to break ties)
 
 
+def expected_end_tick(sim, disruption: Disruption) -> int:
+    """
+    The sim tick when we expect this disruption to be over. A repair delay
+    is measured from the truck itself: how long until it is really fixed.
+    """
+    if disruption.disruption_type == "MAINTENANCE_DELAY":
+        truck = sim.trucks[disruption.target_id]
+        return sim.tick + truck.failed_ticks_remaining + truck.maintenance_minutes_remaining
+    return sim.tick + (disruption.duration_min or 0)
+
+
 def _routes_feeding(crusher_id: str) -> List[str]:
     return [r.route_id for r in topology.ROUTES.values() if r.to_crusher == crusher_id]
 
@@ -75,11 +86,29 @@ def _reassign_option(source_truck_id: str, target_route_id: str, until_tick: int
     )
 
 
-def generate_options(sim, disruption: Disruption) -> List[Option]:
-    options = [_accept_loss_option()]
-    until_tick = sim.tick + (disruption.duration_min or 0)
+def generate_options(sim, disruptions) -> List[Option]:
+    """
+    `disruptions` is what started this tick (a list, or a single one).
+    Each event gets its own ideas; they are merged into one list so the
+    consequence simulator can compare them all against doing nothing.
+    """
+    if isinstance(disruptions, Disruption):
+        disruptions = [disruptions]
+    merged = [_accept_loss_option()]
+    seen = {"accept_loss"}
+    for d in disruptions:
+        for option in _options_for(sim, d):
+            if option.option_id not in seen:
+                seen.add(option.option_id)
+                merged.append(option)
+    return merged
 
-    if disruption.disruption_type == "TRUCK_BREAKDOWN":
+
+def _options_for(sim, disruption: Disruption) -> List[Option]:
+    options = [_accept_loss_option()]
+    until_tick = expected_end_tick(sim, disruption)
+
+    if disruption.disruption_type in ("TRUCK_BREAKDOWN", "MAINTENANCE_DELAY"):
         broken_truck = sim.trucks[disruption.target_id]
         affected_route = broken_truck.original_route_id or broken_truck.route_id
         candidates = _idle_or_spare_trucks(sim, exclude_route=affected_route)

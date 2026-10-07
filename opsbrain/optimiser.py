@@ -27,7 +27,7 @@ from typing import List
 from models import AssetState, RouteStatus
 import topology
 from disruptions import Disruption
-from opsbrain.rules import Option, _accept_loss_option
+from opsbrain.rules import Option, _accept_loss_option, expected_end_tick
 
 MAX_TRUCKS_MOVED = 2
 MAX_TRUCKS_PER_ROUTE = 2
@@ -57,11 +57,17 @@ def _label(moves: dict, horizon_name: str) -> str:
     return f"Move {parts} ({horizon_name})"
 
 
-def generate_candidates(sim, disruption: Disruption) -> List[Option]:
-    """Accept-loss plus every allowed fleet re-deployment."""
+def generate_candidates(sim, disruptions) -> List[Option]:
+    """
+    Accept-loss plus every allowed fleet re-deployment. `disruptions` is
+    everything that started this tick; the search looks at the whole mine
+    as it is now, so several events at once are handled together.
+    """
+    if isinstance(disruptions, Disruption):
+        disruptions = [disruptions]
     options = [_accept_loss_option()]
 
-    until_repair = sim.tick + (disruption.duration_min or 0)
+    until_repair = max(expected_end_tick(sim, d) for d in disruptions)
     horizons = [("until the disruption is over", until_repair)]
     if until_repair < topology.TOTAL_TICKS:
         horizons.append(("for the rest of the shift", topology.TOTAL_TICKS + 1))

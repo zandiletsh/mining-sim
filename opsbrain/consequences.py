@@ -36,6 +36,8 @@ def evaluate_option(sim, option: Option) -> Evaluation:
     clone.event_hooks = []          # don't re-trigger OpsBrain inside the what-if
     option.apply(clone)
 
+    # The hook fired part-way through this tick; finish it, then run the rest.
+    clone.finish_current_tick()
     remaining_ticks = topology.TOTAL_TICKS - clone.tick
     clone.run(total_ticks=remaining_ticks)
 
