@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+*.csv
+demo_artifact/
+tests/
+.git/
+.venv/
+*.zip
