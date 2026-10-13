@@ -22,6 +22,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Check the compose file is valid
+        run: docker compose config -q
       - name: Build the image
         run: docker build -t opsbrain-api .
       - name: Start it and check it answers

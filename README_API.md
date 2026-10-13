@@ -20,3 +20,13 @@ Example body for `/analyse`:
     pip install -r requirements-dev.txt
     uvicorn api.main:app --reload
     pytest
+
+## Monitoring (Prometheus + Grafana)
+
+`docker compose up --build` also starts:
+- Prometheus: http://localhost:9090 (collects numbers from `/metrics` every 5 seconds)
+- Grafana: http://localhost:3000 (the OpsBrain dashboard opens by itself, no login)
+
+To fill the dashboard with data, in a second window run:
+
+    python monitoring/generate_load.py

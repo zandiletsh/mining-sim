@@ -31,3 +31,16 @@ def test_oversized_says_accept_the_loss():
 
 def test_bad_input_rejected():
     assert c.post("/analyse", json={"scenario": "nope"}).status_code == 422
+
+
+def test_metrics_endpoint_counts_requests_and_analyses():
+    c.get("/health")
+    c.post("/analyse", json={"scenario": "delay", "top_n": 2})
+    c.post("/analyse", json={"scenario": "delay", "top_n": 2})  # second one comes from the cache
+    text = c.get("/metrics").text
+    assert 'opsbrain_http_requests_total{method="GET",path="/health",status="200"}' in text
+    assert 'opsbrain_analyses_total{cache="miss",engine="optimiser",scenario="delay"}' in text
+    assert 'opsbrain_analyses_total{cache="hit",engine="optimiser",scenario="delay"}' in text
+    assert "opsbrain_options_searched_count" in text
+    assert 'opsbrain_disruptions_total{type="TRUCK_BREAKDOWN"}' in text
+    assert "opsbrain_best_gain_tonnes" in text
