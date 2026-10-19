@@ -13,8 +13,8 @@ COPY opsbrain ./opsbrain
 COPY api ./api
 
 # do not run as root
-RUN useradd --create-home appuser
-USER appuser
+RUN useradd --create-home --uid 10001 appuser
+USER 10001
 
 EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=5s \

@@ -1,9 +1,11 @@
 """Sends a mix of requests to the API so the Grafana dashboard has something to show.
 Run:  python monitoring/generate_load.py          (needs the stack running)
+For the Kubernetes setup:  set OPSBRAIN_URL=http://localhost:8080  first
 Stop with Ctrl+C."""
 import itertools, json, time, urllib.request
 
-BASE = "http://localhost:8000"
+import os
+BASE = os.environ.get("OPSBRAIN_URL", "http://localhost:8000")
 SCENARIOS = ["combined", "delay", "double", "default", "degradation", "closure"]
 MODES = ["balanced", "oversized"]
 ENGINES = ["optimiser", "rules"]

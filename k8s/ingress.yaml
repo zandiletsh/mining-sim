@@ -1,0 +1,17 @@
+# K3s ships with the Traefik ingress controller, so this works with no extra install.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: opsbrain-api
+  namespace: opsbrain
+spec:
+  rules:
+    - http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: opsbrain-api
+                port:
+                  name: http

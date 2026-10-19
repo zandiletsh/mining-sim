@@ -35,3 +35,14 @@ jobs:
           done
           docker logs opsbrain
           exit 1
+
+  k8s:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the manifests
+        run: kubectl kustomize k8s > rendered.yaml
+      - name: Check them against the Kubernetes schemas
+        run: |
+          curl -sSL https://github.com/yannh/kubeconform/releases/download/v0.6.7/kubeconform-linux-amd64.tar.gz | tar xz
+          ./kubeconform -strict -summary rendered.yaml

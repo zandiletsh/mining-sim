@@ -1,0 +1,71 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: opsbrain-api
+  namespace: opsbrain
+  labels:
+    app: opsbrain-api
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: opsbrain-api
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0   # never drop below the wanted number while updating
+      maxSurge: 1
+  template:
+    metadata:
+      labels:
+        app: opsbrain-api
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8000"
+        prometheus.io/path: /metrics
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: api
+          image: opsbrain-api:local
+          imagePullPolicy: IfNotPresent   # the image is loaded into the cluster with k3d, not pulled
+          ports:
+            - name: http
+              containerPort: 8000
+          startupProbe:                    # gives the app time to start before the other probes begin
+            httpGet: { path: /health, port: http }
+            periodSeconds: 2
+            timeoutSeconds: 3
+            failureThreshold: 30
+          readinessProbe:                  # only send traffic when this passes
+            httpGet: { path: /health, port: http }
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+          livenessProbe:                   # restart the container only if this keeps failing
+            httpGet: { path: /health, port: http }
+            periodSeconds: 10
+            timeoutSeconds: 5              # a busy API can be slow, so be patient
+            failureThreshold: 6
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: "1"
+              memory: 512Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
