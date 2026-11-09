@@ -1,3 +1,4 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#faf9f5;color:#141413}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
 <title>OpsBrain Control Room</title>
 <style>
   /* Layout concept: KPI strip (top) -> live mine-flow diagram (left) +
@@ -255,6 +256,16 @@
   }
   #event-card .badge::before { content: '\25CF'; font-size: 0.6rem; }
   #event-card h3 { font-size: 1.15rem; margin-top: 10px; }
+  #event-card .plain {
+    margin: 4px 0 12px;
+    padding: 10px 12px;
+    border-left: 3px solid var(--signal);
+    background: var(--surface-2);
+    border-radius: 0 8px 8px 0;
+    font-size: 0.88rem;
+    line-height: 1.5;
+  }
+  #event-card .plain .l { color: var(--fg-dim); font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 3px; }
   #event-card .ctx {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
@@ -483,6 +494,7 @@
     HAUL_EMPTY: 0.38,
   };
 
+  function escapeHtml(t) { return String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
   function prettyType(t) { return t.replace(/_/g, ' '); }
   function describeEvent(x) {
     var d = prettyType(x.type) + ' on ' + x.target;
@@ -596,6 +608,7 @@
     html += '<div><div class="l">Production so far</div><div class="v">' + ev.productionSoFar.toLocaleString() + ' t</div></div>';
     html += '<div><div class="l">% of shift target</div><div class="v">' + ev.pctOfTarget + '%</div></div>';
     html += '</div>';
+    if (ev.explanation) html += '<div class="plain"><div class="l">In plain words</div>' + escapeHtml(ev.explanation) + '</div>';
     html += '<div style="font-size:0.85rem; color:var(--fg-dim); margin-bottom:4px;">OpsBrain searched <strong style="color:var(--fg)">' + ev.searched + ' possible fleet moves</strong> and simulated each one forward to shift end. Doing nothing, plus the best three:</div>';
 
     ev.options.forEach(function (opt) {
@@ -742,3 +755,5 @@
   loadScenario(SCENARIOS[0].key);
 })();
 </script>
+
+</body></html>

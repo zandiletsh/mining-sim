@@ -41,6 +41,7 @@ def build_facts(result: dict) -> dict:
     for ev in result.get("events", []):
         opts = ev.get("options", [])
         best = next((o for o in opts if o.get("recommended")), None)
+        base = next((o for o in opts if o.get("id") == "accept_loss"), None)
         events = events + [{
             "minute_into_shift": ev.get("tick"),
             "disruptions": [
@@ -48,6 +49,7 @@ def build_facts(result: dict) -> dict:
                 for d in ev.get("events", [])
             ],
             "tonnes_produced_so_far": ev.get("production_so_far_t"),
+            "tonnes_if_nobody_acts_from_here": base.get("final_production_t") if base else None,
             "options_searched": ev.get("options_searched"),
             "act_is_worth_it": ev.get("act_is_worth_it"),
             "recommended_option": best.get("label") if best else None,
@@ -72,19 +74,32 @@ def _t(x) -> str:
     return f"{x:,.1f}".rstrip("0").rstrip(".") if isinstance(x, (int, float)) else str(x)
 
 
+def _what(ev: dict) -> str:
+    return " and ".join(
+        f"{d['type'].replace('_', ' ').lower()} on {d['target']} for {d['duration_min']} min"
+        for d in ev["disruptions"])
+
+
+def event_text(ev: dict) -> str:
+    """Plain words for ONE disruption point (also used by the Control Room page)."""
+    what = _what(ev)
+    text = f"{what[0].upper()}{what[1:]}. OpsBrain searched {ev['options_searched']} possible moves."
+    if ev.get("tonnes_if_nobody_acts_from_here") is not None:
+        text += f" If nobody acts, the shift ends at {_t(ev['tonnes_if_nobody_acts_from_here'])} t."
+    if ev["act_is_worth_it"] and ev["recommended_option"]:
+        text += (f" Best move: {ev['recommended_option']}. It ends the shift at "
+                 f"{_t(ev['recommended_final_tonnes'])} t, which is {_t(ev['recommended_gain_tonnes'])} t "
+                 f"more than doing nothing.")
+    else:
+        text += " No move beats doing nothing by enough, so doing nothing is fine."
+    return text
+
+
 def template_text(facts: dict) -> str:
     lines = [f"{facts['story']}. Shift target: {_t(facts['shift_target_tonnes'])} t. "
-             f"If nobody acts, the shift ends at {_t(facts['final_tonnes_if_nobody_acts'])} t."]
+             f"If nobody acts at all, the shift ends at {_t(facts['final_tonnes_if_nobody_acts'])} t."]
     for i, ev in enumerate(facts["disruption_points"], 1):
-        what = "; ".join(f"{d['type']} on {d['target']} for {d['duration_min']} min" for d in ev["disruptions"])
-        line = f"Disruption {i} (minute {ev['minute_into_shift']}): {what}. {ev['options_searched']} options searched."
-        if ev["act_is_worth_it"] and ev["recommended_option"]:
-            line += (f" Best move: {ev['recommended_option']}. It ends the shift at "
-                     f"{_t(ev['recommended_final_tonnes'])} t, which is {_t(ev['recommended_gain_tonnes'])} t "
-                     f"more than doing nothing.")
-        else:
-            line += " No move beats doing nothing by enough, so doing nothing is fine."
-        lines.append(line)
+        lines.append(f"Disruption {i} (minute {ev['minute_into_shift']}): {event_text(ev)}")
     lines.append("This is a recommendation only. A person decides.")
     return "\n\n".join(lines)
 
