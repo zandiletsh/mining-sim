@@ -14,6 +14,7 @@ from pydantic import BaseModel, Field
 
 from opsbrain.analyse import SCENARIOS, MODES, ENGINES, analyse
 from api import metrics
+from api.jobs import router as jobs_router
 
 app = FastAPI(
     title="OpsBrain API",
@@ -22,6 +23,7 @@ app = FastAPI(
     version="0.2.0",
 )
 app.middleware("http")(metrics.metrics_middleware)
+app.include_router(jobs_router)
 
 
 class AnalyseRequest(BaseModel):
